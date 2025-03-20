@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "autocad-lisp": {
+      "command": "C:\\Users\\hvksh\\mcp-servers\\autocad-mcp\\venv\\Scripts\\python.exe",
+      "args": ["C:\\Users\\hvksh\\mcp-servers\\autocad-mcp\\server_lisp.py"]
+    }
+  }
+}
