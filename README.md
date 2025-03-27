@@ -5,9 +5,12 @@ This MCP server enables natural language control of AutoCAD LT 2024/2025 through
 ## Features
 
 - Generates and executes AutoLISP code in AutoCAD LT
-- Creates process engineering symbols (pumps, vessels, heat exchangers)
-- Draws piping connections and complete process diagrams
-- Provides direct access to AutoLISP for custom drawing operations
+- Creates basic shapes (lines, circles, text)
+- Handles block insertion with attribute management
+- Supports connecting blocks with lines between named connection points
+- Arranges multiple blocks in sequence with custom spacing
+- Provides layer creation and management
+- Allows direct custom AutoLISP code execution
 - Supports text-to-CAD functionality through natural language
 
 ## Prerequisites
@@ -20,10 +23,11 @@ This MCP server enables natural language control of AutoCAD LT 2024/2025 through
 
 1. **Install Dependencies**:
    ```
-   cd pathto\mcp-servers\autocad-mcp
+   git clone https://github.com/your-username/autocad-mcp.git
+   cd autocad-mcp
    python -m venv venv
    venv\Scripts\activate
-   pip install mcp[cli] keyboard pyperclip pywin32
+   pip install -r requirements.txt
    ```
 
 2. **Configure Claude Desktop**:
@@ -33,8 +37,8 @@ This MCP server enables natural language control of AutoCAD LT 2024/2025 through
    {
      "mcpServers": {
        "autocad-lisp": {
-         "command": "pathto\\mcp-servers\\autocad-mcp\\venv\\Scripts\\python.exe",
-         "args": ["pathto\\mcp-servers\\autocad-mcp\\server_lisp.py"]
+         "command": "path\\to\\autocad-mcp\\venv\\Scripts\\python.exe",
+         "args": ["path\\to\\autocad-mcp\\server_lisp.py"]
        }
      }
    }
@@ -54,30 +58,44 @@ This MCP server enables natural language control of AutoCAD LT 2024/2025 through
 - `create_line`: Draw a line between two points
 - `create_circle`: Create a circle with defined center and radius
 - `create_text`: Add text labels at specified coordinates
-- `create_equipment_symbol`: Draw process equipment symbols (vessel, pump, exchanger)
-- `create_pipe`: Connect equipment with pipe lines
-- `create_simple_pfd`: Create a complete process flow diagram
+- `insert_block`: Insert a block with optional ID attribute, scale, and rotation
+- `connect_blocks`: Connect two blocks with a line between named connection points
+- `label_block`: Add a text label to a block
+- `arrange_blocks`: Arrange multiple blocks in a sequence with custom spacing
+- `set_layer_properties`: Create or modify layers with color and linetype
 - `execute_custom_autolisp`: Run custom AutoLISP code directly
+
+## LISP Library Structure
+
+The server loads multiple LISP files for functionality:
+
+1. **error_handling.lsp**: Base error handling and validation functions
+2. **basic_shapes.lsp**: Core functions for creating lines, circles, and text
+3. **drafting_helpers.lsp**: Functions for block manipulation, layer management, and connecting elements
+4. **block_id_helpers.lsp**: Functions for finding and manipulating blocks by ID attribute
+5. **selection_and_file.lsp**: Selection set management and file operations
+6. **advanced_geometry.lsp**: Extended geometry creation and manipulation
+7. **annotation_helpers.lsp**: Text and dimension creation tools
+8. **layout_management.lsp**: Functions for managing layouts and viewports
 
 ## Usage Examples
 
 1. **Basic Drawing Operations**:
    - "Draw a line from coordinates (100,100) to (200,150)"
    - "Create a circle at (150,150) with radius 25"
-   - "Add text 'Cooling System' at position (100,200)"
+   - "Add text 'System Title' at position (100,200)"
 
-2. **Process Equipment**:
-   - "Draw a pump at (100,100) with tag P-101"
-   - "Create a vessel at (200,150) labeled TK-101"
-   - "Place a heat exchanger at (150,120)"
+2. **Block Operations**:
+   - "Insert a block named 'PUMP' at position (100,100) with ID 'P-101'"
+   - "Label the block with ID 'P-101' as 'Feed Pump'"
+   - "Connect block 'P-101' to 'V-201' on the 'Piping' layer"
 
-3. **Process Flow Diagrams**:
-   - "Create a simple process flow diagram starting at (50,100)"
-   - "Draw a pump feeding into a heat exchanger and then to a storage vessel"
-   - "Create a PFD for a water treatment system with feed pump, filter, and storage tank"
+3. **Multi-Block Operations**:
+   - "Arrange blocks 'PUMP', 'VALVE', and 'TANK' starting at (50,100) going right with 30 units spacing"
+   - "Create a layer named 'Equipment' with color 'yellow'"
 
 4. **Custom AutoLISP**:
-   - "Execute this AutoLISP code to create a custom piping configuration: (defun c:create-pipe-bend ...)"
+   - "Execute this AutoLISP code to create a custom function: (defun c:my-function ...)"
 
 ## Limitations
 
@@ -85,11 +103,16 @@ This MCP server enables natural language control of AutoCAD LT 2024/2025 through
 - Relies on window focus and keyboard simulation for command execution
 - User should not interact with AutoCAD while commands are being sent
 - Limited to 2D drawing operations
+- Connection points for blocks are currently hard-coded (pointA, pointB)
 
 ## Troubleshooting
 
-- If connection fails, ensure AutoCAD LT is running with a drawing open
-- Verify window title contains "AutoCAD LT" and "Drawing"
-- Run the server as Administrator
-- Check that your AutoCAD LT version supports AutoLISP (2024 or newer)
-- Look at server console for detailed error messages
+See the [TROUBLESHOOTING.md](TROUBLESHOOTING.md) file for common issues and solutions.
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

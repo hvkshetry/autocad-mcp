@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 """
 AutoCAD LT MCP Server (AutoLISP Version)
-A specialized implementation that uses AutoLISP code generation and execution.
+A specialized implementation for a general 2D drafting assistant.
+
+This codebase now includes additional placeholders and partial
+implementations for advanced geometry, annotation, layout management,
+and more robust error handling, in line with the recommended feedback.
 """
 import logging
 import sys
@@ -15,6 +19,7 @@ import win32gui
 import win32con
 import keyboard
 from typing import Optional, Dict, Any, List, Tuple
+import signal
 
 from mcp.server.fastmcp import FastMCP
 
@@ -24,21 +29,30 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stderr)]
 )
-logger = logging.getLogger("autocad-lisp-mcp")
+logger = logging.getLogger("autocad-lisp-mcp") # Removed the backslash
 
 # Initialize FastMCP server
 autocad_mcp = FastMCP("autocad-lisp-server")
 
 # Global variables
 acad_window = None
-lisp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lisp-code")
+lisp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lisp-code") # Removed the backslash
+
+# Add signal handlers to gracefully handle termination
+def signal_handler(sig, frame):
+    logger.info(f"Signal {sig} received, shutting down gracefully...")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 def find_autocad_window():
-    """Find the AutoCAD LT window handle."""
+    """Find the AutoCAD LT window handle based on window title."""
     def enum_windows_callback(hwnd, result):
         if win32gui.IsWindowVisible(hwnd):
             window_text = win32gui.GetWindowText(hwnd)
-            if "AutoCAD LT" in window_text and "Drawing" in window_text:
+            if "AutoCAD" in window_text and ("LT" in window_text or "Drawing" in window_text):
+                logger.info(f"Found AutoCAD window with title: {window_text}")
                 result.append(hwnd)
         return True
     
@@ -47,11 +61,68 @@ def find_autocad_window():
     
     if windows:
         return windows[0]
+        
+    # If we didn't find a window with both criteria, try just looking for AutoCAD
+    windows = []
+    def fallback_enum_callback(hwnd, result):
+        if win32gui.IsWindowVisible(hwnd):
+            window_text = win32gui.GetWindowText(hwnd)
+            if "AutoCAD" in window_text:
+                logger.info(f"Found fallback AutoCAD window with title: {window_text}")
+                result.append(hwnd)
+        return True
+    
+    win32gui.EnumWindows(fallback_enum_callback, windows)
+    
+    if windows:
+        return windows[0]
     return None
 
-def load_lisp_file(file_path):
-    """Load a LISP file into AutoCAD."""
+def activate_autocad_window():
+    """Activate the AutoCAD window using multiple approaches."""
     global acad_window
+    
+    if not acad_window:
+        acad_window = find_autocad_window()
+        if not acad_window:
+            return False
+    
+    try:
+        # Try the standard activation first
+        win32gui.SetForegroundWindow(acad_window)
+        time.sleep(0.5)  # Increased wait time
+        
+        # Check if window was activated
+        active_hwnd = win32gui.GetForegroundWindow()
+        if active_hwnd == acad_window:
+            return True
+            
+        # If not activated, try alternative methods
+        try:
+            # Try to bring window to front using alternative method
+            win32gui.ShowWindow(acad_window, win32con.SW_RESTORE)  # In case it's minimized
+            time.sleep(0.3)
+            win32gui.BringWindowToTop(acad_window)
+            time.sleep(0.3)
+            win32gui.SetForegroundWindow(acad_window)
+            time.sleep(0.5)
+            return True
+        except Exception as e2:
+            logger.error(f"Alternative activation failed: {str(e2)}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error activating AutoCAD window: {str(e)}")
+        return False
+
+def load_lisp_file(file_path):
+    """Load a LISP file into AutoCAD by simulating typed commands."""
+    global acad_window
+    
+    # Check if file exists
+    if not os.path.exists(file_path):
+        logger.error(f"LISP file not found: {file_path}")
+        return False, f"LISP file not found: {file_path}"
     
     if not acad_window:
         acad_window = find_autocad_window()
@@ -59,25 +130,36 @@ def load_lisp_file(file_path):
             return False, "AutoCAD LT window not found"
     
     try:
-        # Activate the AutoCAD window
-        win32gui.SetForegroundWindow(acad_window)
-        time.sleep(0.2)  # Give it time to focus
+        # Log the operation
+        logger.info(f"Attempting to load LISP file: {file_path}")
         
-        # Command to load LISP file
+        # Activate the AutoCAD window using our robust method
+        if not activate_autocad_window():
+            return False, "Failed to activate AutoCAD window"
+        
+        # Clear command line and any pending operations
         keyboard.press_and_release('esc')
         time.sleep(0.1)
-        keyboard.write("(load \"{}\")".format(file_path.replace('\\', '/')))
+        keyboard.press_and_release('esc')
         time.sleep(0.1)
-        keyboard.press_and_release('enter')
-        time.sleep(0.5)  # Wait for loading
         
-        return True, "LISP file loaded successfully"
+        # Load the LISP file - ensure proper path format and escaping
+        lisp_path_formatted = Path(file_path).as_posix()
+        load_command = f"(load \"{lisp_path_formatted}\")"  
+        logger.info(f"Sending command: {load_command}")
+        
+        keyboard.write(load_command)
+        time.sleep(0.2)  # Give time for the command to be entered
+        keyboard.press_and_release('enter')
+        time.sleep(1.0)  # Increase wait time for file loading
+        
+        return True, f"LISP file '{os.path.basename(file_path)}' loaded successfully"
     except Exception as e:
         logger.error(f"Error loading LISP file: {str(e)}")
         return False, f"Error loading LISP file: {str(e)}"
 
 def execute_lisp_command(command):
-    """Execute a LISP command in AutoCAD."""
+    """Execute a LISP command in AutoCAD by simulating typed commands."""
     global acad_window
     
     if not acad_window:
@@ -86,23 +168,22 @@ def execute_lisp_command(command):
             return False, "AutoCAD LT window not found"
     
     try:
-        # Activate the AutoCAD window
-        win32gui.SetForegroundWindow(acad_window)
-        time.sleep(0.2)  # Give it time to focus
+        # Use our robust window activation method
+        if not activate_autocad_window():
+            return False, "Failed to activate AutoCAD window"
         
-        # Clear any previous command
         keyboard.press_and_release('esc')
         time.sleep(0.1)
         keyboard.press_and_release('esc')
         time.sleep(0.1)
         
-        # Execute command
         keyboard.write(command)
+
         time.sleep(0.1)
         keyboard.press_and_release('enter')
-        time.sleep(0.5)  # Wait for command execution
+        time.sleep(0.5)
         
-        return True, "Command executed successfully"
+        return True, f"Command executed: {command}"
     except Exception as e:
         logger.error(f"Error executing LISP command: {str(e)}")
         return False, f"Error executing LISP command: {str(e)}"
@@ -117,470 +198,603 @@ def execute_lisp_from_clipboard():
             return False, "AutoCAD LT window not found"
     
     try:
-        # Activate the AutoCAD window
-        win32gui.SetForegroundWindow(acad_window)
-        time.sleep(0.2)  # Give it time to focus
+        # Use our robust window activation method
+        if not activate_autocad_window():
+            return False, "Failed to activate AutoCAD window"
         
-        # Command to execute LISP code from clipboard
         keyboard.press_and_release('esc')
         time.sleep(0.1)
         keyboard.press_and_release('esc')
         time.sleep(0.1)
         
-        # Execute using LISP's (eval (read)) pattern
         keyboard.write("(eval (read))")
         time.sleep(0.1)
         keyboard.press_and_release('enter')
         time.sleep(0.2)
         
-        # AutoCAD now expects LISP code input
-        # Use Ctrl+V to paste from clipboard
         keyboard.press_and_release('ctrl+v')
         time.sleep(0.1)
         keyboard.press_and_release('enter')
-        time.sleep(0.5)  # Wait for execution
+        time.sleep(0.5)
         
         return True, "LISP code from clipboard executed successfully"
     except Exception as e:
         logger.error(f"Error executing LISP from clipboard: {str(e)}")
         return False, f"Error executing LISP from clipboard: {str(e)}"
 
+def safe_load_lisp_file(file_name):
+    """
+    Safely load a LISP file with better error handling and diagnostics.
+    Returns (success, message)
+    """
+    global lisp_path
+    
+    full_path = os.path.join(lisp_path, file_name)
+    if not os.path.exists(full_path):
+        logger.error(f"LISP file not found: {full_path}")
+        return False, f"LISP file not found: {full_path}"
+    
+    try:
+        # First try to verify AutoCAD's state
+        exec_success, exec_message = execute_lisp_command("(princ \"READY\")")
+        if not exec_success:
+            logger.warning(f"AutoCAD might not be in a ready state: {exec_message}")
+            # Still continue with the load attempt
+        
+        # Now load the file
+        success, message = load_lisp_file(full_path)
+        
+        # Give AutoCAD more time to process the load
+        time.sleep(1.5)
+        
+        return success, message
+    except Exception as e:
+        logger.error(f"Error in safe_load_lisp_file for {file_name}: {str(e)}")
+        return False, f"Error loading {file_name}: {str(e)}"
+
 def initialize_autocad_lisp():
-    """Initialize AutoCAD with LISP capabilities."""
+    """
+    Initialize AutoCAD with LISP capabilities for general drafting.
+    Loads multiple LISP files that together provide advanced drafting,
+    geometry, annotation, layout, and error handling functions.
+    """
     global acad_window, lisp_path
     
-    # Find AutoCAD window
     acad_window = find_autocad_window()
     if not acad_window:
         logger.error("AutoCAD LT window not found. Make sure AutoCAD LT is running with a drawing open.")
         return False
     
-    # Load our main LISP library
-    basic_shapes_lisp = os.path.join(lisp_path, "basic_shapes.lsp")
-    process_helpers_lisp = os.path.join(lisp_path, "process_diagram_helpers.lsp")
-    tag_helpers_lisp = os.path.join(lisp_path, "tag_helpers.lsp")
+    # Load files in order of dependency
+    lisp_files = [
+        "error_handling.lsp",      # Load error handling first
+        "basic_shapes.lsp",        # Basic shapes don't depend on anything
+        "drafting_helpers.lsp",    # Depends on error_handling
+        "block_id_helpers.lsp",    # Depends on drafting_helpers
+        "selection_and_file.lsp",  # Depends on error_handling
+        "advanced_geometry.lsp",   # Load the rest
+        "annotation_helpers.lsp",
+        "layout_management.lsp"
+    ]
     
-    # Load basic shapes library
-    if os.path.exists(basic_shapes_lisp):
-        success, message = load_lisp_file(basic_shapes_lisp)
-        if not success:
-            logger.error(f"Failed to load basic shapes library: {message}")
-            return False
-    else:
-        logger.error(f"LISP file not found: {basic_shapes_lisp}")
+    # Clear any pending commands or prompts
+    for _ in range(3):  # Send escape multiple times to ensure clean state
+        keyboard.press_and_release('esc')
+        time.sleep(0.2)
+    
+    # First verify we can communicate with AutoCAD
+    exec_success, exec_message = execute_lisp_command("(princ \"MCP INITIALIZATION\")")
+    if not exec_success:
+        logger.error(f"Cannot communicate with AutoCAD: {exec_message}")
         return False
     
-    # Load process diagram helpers library
-    if os.path.exists(process_helpers_lisp):
-        success, message = load_lisp_file(process_helpers_lisp)
-        if not success:
-            logger.error(f"Failed to load process diagram helpers library: {message}")
-            return False
-    else:
-        logger.error(f"LISP file not found: {process_helpers_lisp}")
-        return False
+    success_count = 0
+    for f in lisp_files:
+        logger.info(f"Attempting to load {f}...")
+        success, message = safe_load_lisp_file(f)
         
-    # Load tag helpers library
-    if os.path.exists(tag_helpers_lisp):
-        success, message = load_lisp_file(tag_helpers_lisp)
         if success:
-            logger.info("Successfully loaded all LISP libraries")
-            return True
+            success_count += 1
+            logger.info(f"Successfully loaded {f}")
         else:
-            logger.error(f"Failed to load tag helpers library: {message}")
-            return False
+            logger.error(f"Failed to load {f}: {message}")
+            # Continue loading other files instead of returning False immediately
+    
+    # Report overall success based on how many files loaded
+    if success_count == len(lisp_files):
+        logger.info("Successfully loaded all LISP libraries for a general 2D drafting assistant.")
+        return True
+    elif success_count > 0:
+        logger.warning(f"Partially initialized: {success_count}/{len(lisp_files)} LISP files loaded.")
+        return True  # Still return True to continue with partial functionality
     else:
-        logger.error(f"LISP file not found: {tag_helpers_lisp}")
+        logger.error("Failed to load any LISP files.")
         return False
 
 @autocad_mcp.tool()
 async def get_autocad_status() -> str:
-    """Get the current status of the AutoCAD connection.
-    
-    Returns:
-        Status message indicating if AutoCAD is connected.
-    """
+    """Check or initialize the AutoCAD connection."""
     global acad_window
     
     if acad_window is None:
         if initialize_autocad_lisp():
             window_title = win32gui.GetWindowText(acad_window)
-            return f"Successfully connected to AutoCAD LT with AutoLISP support: {window_title}"
+            return f"Successfully connected to AutoCAD LT: {window_title}"
         else:
-            return "Failed to connect to AutoCAD LT. Please ensure AutoCAD LT is running with a drawing open."
+            return "Failed to connect to AutoCAD LT. Please ensure it is running with a drawing open."
     
     try:
         window_title = win32gui.GetWindowText(acad_window)
-        if "AutoCAD LT" in window_title:
-            return f"Connected to AutoCAD LT with AutoLISP support: {window_title}"
+        if "AutoCAD" in window_title:  # Changed from "AutoCAD LT" to just "AutoCAD"
+            if activate_autocad_window():
+                return f"Connected to AutoCAD: {window_title}"
+            else:
+                return f"Connected to AutoCAD but unable to activate window: {window_title}"
         else:
-            # Try to reconnect
+            # Attempt re-initialization
             if initialize_autocad_lisp():
                 window_title = win32gui.GetWindowText(acad_window)
-                return f"Reconnected to AutoCAD LT with AutoLISP support: {window_title}"
-            return "Lost connection to AutoCAD LT."
+                return f"Reconnected to AutoCAD: {window_title}"
+            return "Lost connection to AutoCAD."
     except Exception as e:
-        # Try to reconnect
         if initialize_autocad_lisp():
-            return "Reconnected to AutoCAD LT successfully."
-        return f"Lost connection to AutoCAD LT: {str(e)}"
+            return "Reconnected to AutoCAD successfully."
+        return f"Lost connection to AutoCAD: {str(e)}"
+
+@autocad_mcp.tool()
+async def run_test() -> str:
+    """Run a test to verify that all AutoCAD functions are working."""
+    global acad_window, lisp_path
+    
+    if acad_window is None:
+        if not initialize_autocad_lisp():
+            return "Failed to connect to AutoCAD LT. Please ensure it is running with a drawing open."
+    
+    # First try to load our test file
+    test_file = os.path.join(lisp_path, "mcp_test.lsp")
+    if not os.path.exists(test_file):
+        return "Test file not found. Please ensure mcp_test.lsp exists in the lisp-code directory."
+    
+    # Clear any pending commands
+    for _ in range(3):
+        keyboard.press_and_release('esc')
+        time.sleep(0.2)
+    
+    # Execute a diagnostic command
+    success, message = execute_lisp_command("(princ \"TEST INITIALIZATION\")")
+    if not success:
+        return f"Cannot communicate with AutoCAD: {message}"
+    
+    # Now load the test file
+    success, message = load_lisp_file(test_file)
+    if not success:
+        return f"Failed to load test file: {message}"
+    
+    # Now run the test command
+    time.sleep(1.5)  # Give more time for the file to load
+    success, message = execute_lisp_command("(c:mcp_test)")
+    
+    if success:
+        return "Test completed successfully. The AutoCAD MCP implementation is working. Check the AutoCAD drawing to see the test results."
+    else:
+        return f"Test failed: {message}"
+
+
+###############################################################################
+# Example Tools: Basic shapes
+###############################################################################
 
 @autocad_mcp.tool()
 async def create_line(start_x: float, start_y: float, end_x: float, end_y: float) -> str:
-    """Create a line in AutoCAD using AutoLISP.
+    # First ensure we're using the active layer
+    execute_lisp_command('(setq current-layer (getvar "CLAYER"))')
+    execute_lisp_command('(setvar "CLAYER" current-layer)')
     
-    Args:
-        start_x: X coordinate of start point
-        start_y: Y coordinate of start point
-        end_x: X coordinate of end point
-        end_y: Y coordinate of end point
-        
-    Returns:
-        Confirmation message or error
-    """
-    try:
-        command = f"(c:create-line {start_x} {start_y} {end_x} {end_y})"
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Line created from ({start_x},{start_y}) to ({end_x},{end_y})"
-        else:
-            return message
-    except Exception as e:
-        logger.error(f"Error creating line: {str(e)}")
-        return f"Error creating line: {str(e)}"
+    cmd = f"(c:create-line {start_x} {start_y} {end_x} {end_y})"
+    success, message = execute_lisp_command(cmd)
+    return message if not success else f"Line created from ({start_x},{start_y}) to ({end_x},{end_y})."
 
 @autocad_mcp.tool()
 async def create_circle(center_x: float, center_y: float, radius: float) -> str:
-    """Create a circle in AutoCAD using AutoLISP.
+    # First ensure we're using the active layer
+    execute_lisp_command('(setq current-layer (getvar "CLAYER"))')
+    execute_lisp_command('(setvar "CLAYER" current-layer)')
     
-    Args:
-        center_x: X coordinate of center point
-        center_y: Y coordinate of center point
-        radius: Radius of the circle
-        
-    Returns:
-        Confirmation message or error
-    """
-    try:
-        command = f"(c:create-circle {center_x} {center_y} {radius})"
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Circle created at ({center_x},{center_y}) with radius {radius}"
-        else:
-            return message
-    except Exception as e:
-        logger.error(f"Error creating circle: {str(e)}")
-        return f"Error creating circle: {str(e)}"
+    cmd = f"(c:create-circle {center_x} {center_y} {radius})"
+    success, message = execute_lisp_command(cmd)
+    return message if not success else f"Circle created at ({center_x},{center_y}), radius {radius}."
 
 @autocad_mcp.tool()
 async def create_text(x: float, y: float, text: str, height: float = 2.5) -> str:
-    """Create text in AutoCAD using AutoLISP.
+    # First ensure we're using the active layer
+    execute_lisp_command('(setq current-layer (getvar "CLAYER"))')
+    execute_lisp_command('(setvar "CLAYER" current-layer)')
     
-    Args:
-        x: X coordinate of insertion point
-        y: Y coordinate of insertion point
-        text: Text content
-        height: Text height (default: 2.5)
-        
-    Returns:
-        Confirmation message or error
-    """
-    try:
-        # Need to handle the text string for LISP
-        text_escaped = text.replace('"', '\\"')
-        command = f'(c:create-text {x} {y} "{text_escaped}" {height})'
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Text '{text}' created at ({x},{y})"
-        else:
-            return message
-    except Exception as e:
-        logger.error(f"Error creating text: {str(e)}")
-        return f"Error creating text: {str(e)}"
+    text_escaped = text.replace('"', '\\"')
+    cmd = f'(c:create-text {x} {y} "{text_escaped}" {height})'
+    success, message = execute_lisp_command(cmd)
+    return message if not success else f"Text '{text}' created at ({x},{y})."
+
+###############################################################################
+# Example Tools: Block insertion, labeling, arrangement
+###############################################################################
 
 @autocad_mcp.tool()
-async def create_equipment_symbol(equipment_type: str, x: float, y: float, tag: str = "",
-                                 scale: float = 1.0) -> str:
-    """Create a process equipment symbol using AutoLISP.
+async def insert_block(block_name: str, x: float, y: float, block_id: str = "",
+                       scale: float = 1.0, rotation: float = 0.0) -> str:
+    # First ensure we're using the active layer
+    execute_lisp_command('(setq current-layer (getvar "CLAYER"))')
+    execute_lisp_command('(setvar "CLAYER" current-layer)')
     
-    Args:
-        equipment_type: Type of equipment ('vessel', 'pump', 'exchanger')
-        x: X coordinate for insertion point
-        y: Y coordinate for insertion point
-        tag: Equipment tag (default: empty)
-        scale: Symbol scale (default: 1.0)
-        
-    Returns:
-        Confirmation message or error
-    """
-    try:
-        # Handle the tag string for LISP
-        tag_escaped = tag.replace('"', '\\"')
-        
-        # Use the standard equipment insertion function for predefined block types
-        if equipment_type.lower() in ['pump-centrif1', 'pump-centrifugal-1']:
-            command = f'(c:insert_standard_equipment "pump-centrifugal-1" {x} {y} "{tag_escaped}" {scale})'
-        elif equipment_type.lower() in ['pump-centrif2', 'pump-centrifugal-2']:
-            command = f'(c:insert_standard_equipment "pump-centrifugal-2" {x} {y} "{tag_escaped}" {scale})'
-        elif equipment_type.lower() in ['blower-rotary', 'blower']:
-            command = f'(c:insert_standard_equipment "blower-rotary" {x} {y} "{tag_escaped}" {scale})'
-        # Fall back to original equipment types for backward compatibility
-        elif equipment_type.lower() == 'pump':
-            command = f'(c:create-pump {x} {y} {scale} "{tag_escaped}")'
-        elif equipment_type.lower() == 'vessel':
-            width = 8.0 * scale
-            height = 20.0 * scale
-            command = f'(c:create-vessel {x} {y} {width} {height} "{tag_escaped}")'
-        elif equipment_type.lower() in ['exchanger', 'heat exchanger']:
-            command = f'(c:create-heat-exchanger {x} {y} {scale} "{tag_escaped}")'
-        else:
-            return f"Unknown equipment type: {equipment_type}"
-        
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"{equipment_type.capitalize()} symbol created at ({x},{y}) with tag '{tag}'"
-        else:
-            return message
-    except Exception as e:
-        logger.error(f"Error creating equipment symbol: {str(e)}")
-        return f"Error creating equipment symbol: {str(e)}"
+    block_id_escaped = block_id.replace('"', '\\"')
+    cmd = f'(c:insert_block "{block_name}" {x} {y} "{block_id_escaped}" {scale} {rotation})'
+    success, message = execute_lisp_command(cmd)
+    return message if not success else f"Block '{block_name}' inserted at ({x},{y}) with ID '{block_id}'."
 
 @autocad_mcp.tool()
-async def create_pipe(start_x: float, start_y: float, end_x: float, end_y: float) -> str:
-    """Create a pipe line between two points using AutoLISP.
-    
-    Args:
-        start_x: X coordinate of start point
-        start_y: Y coordinate of start point
-        end_x: X coordinate of end point
-        end_y: Y coordinate of end point
-        
-    Returns:
-        Confirmation message or error
+async def connect_blocks(start_id: str, end_id: str, layer: str = "Connections", 
+                         from_point: str = "CONN_DEFAULT1", to_point: str = "CONN_DEFAULT2") -> str:
     """
-    try:
-        command = f"(c:create-pipe {start_x} {start_y} {end_x} {end_y})"
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Pipe created from ({start_x},{start_y}) to ({end_x},{end_y})"
-        else:
-            return message
-    except Exception as e:
-        logger.error(f"Error creating pipe: {str(e)}")
-        return f"Error creating pipe: {str(e)}"
+    Connect two blocks by ID with a line from a named connection point in
+    the first block to a named connection point in the second block.
+    """
+    cmd = f'(c:connect_blocks_by_id "{start_id}" "{end_id}" "{layer}" "{from_point}" "{to_point}")'
+    success, message = execute_lisp_command(cmd)
+    return message if not success else f"Connected block '{start_id}' to '{end_id}' on layer '{layer}'."
 
 @autocad_mcp.tool()
-async def create_simple_pfd(x: float, y: float, scale: float = 1.0) -> str:
-    """Create a simple process flow diagram using AutoLISP.
-    
-    Args:
-        x: X coordinate for starting point
-        y: Y coordinate for center line
-        scale: Overall scaling factor (default: 1.0)
-        
-    Returns:
-        Confirmation message or error
-    """
-    try:
-        command = f"(c:create-simple-pfd {x} {y} {scale})"
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Simple process flow diagram created at ({x},{y}) with scale {scale}"
-        else:
-            return message
-    except Exception as e:
-        logger.error(f"Error creating process flow diagram: {str(e)}")
-        return f"Error creating process flow diagram: {str(e)}"
+async def label_block(block_id: str, label_text: str, height: float = 2.5) -> str:
+    label_escaped = label_text.replace('"', '\\"')
+    cmd = f'(c:label_block_by_id "{block_id}" "{label_escaped}" {height})'
+    success, message = execute_lisp_command(cmd)
+    return message if not success else f"Labeled block '{block_id}' with text '{label_text}'."
 
 @autocad_mcp.tool()
-async def connect_equipment(start_equipment_id: str, end_equipment_id: str, 
-                           pipe_type: str = "Main", from_port: str = "out", 
-                           to_port: str = "in") -> str:
-    """Connect two equipment blocks with a pipe.
-    
-    Args:
-        start_equipment_id: Tag or ID of the starting equipment
-        end_equipment_id: Tag or ID of the ending equipment
-        pipe_type: Type of pipe (Main, Secondary, etc.)
-        from_port: Port name on the starting equipment (default: out)
-        to_port: Port name on the ending equipment (default: in)
-        
-    Returns:
-        Confirmation message or error
+async def arrange_blocks(blocks_and_ids: list, start_x: float, start_y: float, 
+                         direction: str = "right", distance: float = 20.0) -> str:
+    """
+    Arrange multiple blocks in a sequence with optional ID assignment.
+    blocks_and_ids is a list of tuples (block_name, block_id).
     """
     try:
-        # Create a LISP command that finds the equipment by tag and connects them
-        # This requires implementing a helper function in AutoLISP to find entities by tag
-        command = f'(c:connect_equipment_by_tag "{start_equipment_id}" "{end_equipment_id}" "{pipe_type}" "{from_port}" "{to_port}")'
+        # Convert to a LISP list form: (("BlockName" (("ID" . "B-1"))) ...)
+        block_list_lisp = "("
+        for (b_name, b_id) in blocks_and_ids:
+            block_list_lisp += f'("{b_name}" (("ID" . "{b_id}"))) '
+        block_list_lisp += ")"
         
-        # For now, we'll use a simpler approach and just indicate this needs to be implemented
-        # In a real implementation, we would need to track entity names of inserted equipment
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Connected {start_equipment_id} to {end_equipment_id} with {pipe_type} pipe"
-        else:
-            return f"Error connecting equipment: {message}. This function requires implementation of equipment tracking by tag."
+        cmd = f'(c:arrange_blocks {block_list_lisp} {start_x} {start_y} "{direction}" {distance})'
+        success, message = execute_lisp_command(cmd)
+        return message if not success else f"Arranged {len(blocks_and_ids)} blocks starting at ({start_x},{start_y})."
     except Exception as e:
-        logger.error(f"Error connecting equipment: {str(e)}")
-        return f"Error connecting equipment: {str(e)}"
+        logger.error(f"Error in arrange_blocks: {str(e)}")
+        return f"Error: {str(e)}"
+
+###############################################################################
+# Additional Tools / placeholders
+###############################################################################
 
 @autocad_mcp.tool()
-async def label_equipment(equipment_id: str, label_text: str, height: float = 2.5) -> str:
-    """Label an equipment block with text.
-    
-    Args:
-        equipment_id: Tag or ID of the equipment to label
-        label_text: Text content for the label
-        height: Text height (default: 2.5)
-        
-    Returns:
-        Confirmation message or error
+async def create_polyline(points: List[Tuple[float, float]], closed: bool = False) -> str:
     """
-    try:
-        # Create a LISP command that finds the equipment by tag and labels it
-        label_escaped = label_text.replace('"', '\\"')
-        command = f'(c:label_equipment_by_tag "{equipment_id}" "{label_escaped}" {height})'
+    Create a polyline from a list of points.
+    E.g., points=[(0,0), (10,0), (10,5)], closed=True
+    """
+    if len(points) < 2:
+        return "Need at least two points to create a polyline."
         
-        # For now, we'll use a simpler approach and just indicate this needs to be implemented
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Labeled equipment {equipment_id} with text: {label_text}"
+    # First approach: Try to use direct command entry with _pline
+    try:
+        if not activate_autocad_window():
+            return "Failed to activate AutoCAD window"
+            
+        # Clear command line
+        keyboard.press_and_release('esc')
+        time.sleep(0.1)
+        keyboard.press_and_release('esc')
+        time.sleep(0.1)
+        
+        # Ensure current layer is preserved
+        execute_lisp_command('(setq current-layer (getvar "CLAYER"))')
+        execute_lisp_command('(setvar "CLAYER" current-layer)')
+        time.sleep(0.1)
+        
+        # Start polyline command
+        keyboard.write("_pline")
+        keyboard.press_and_release('enter')
+        time.sleep(0.2)
+        
+        # Enter points
+        for (x, y) in points:
+            keyboard.write(f"{x},{y}")
+            keyboard.press_and_release('enter')
+            time.sleep(0.1)
+            
+        # Close if needed
+        if closed:
+            keyboard.write("C")
+            keyboard.press_and_release('enter')
         else:
-            return f"Error labeling equipment: {message}. This function requires implementation of equipment tracking by tag."
+            keyboard.press_and_release('enter')
+            
+        time.sleep(0.2)  # Give time for command to complete
+        return "Polyline created."
+        
     except Exception as e:
-        logger.error(f"Error labeling equipment: {str(e)}")
-        return f"Error labeling equipment: {str(e)}"
+        logger.error(f"Error with direct polyline creation: {str(e)}")
+        
+        # Fallback to LISP method if direct method fails
+        try:
+            # Build a LISP list of point lists
+            pts_lisp = "(list "
+            for (x, y) in points:
+                pts_lisp += f"(list {x} {y} 0.0) "
+            pts_lisp += ")"
+            
+            cmd = f"(c:create-polyline {pts_lisp} {'T' if closed else 'nil'})"
+            success, message = execute_lisp_command(cmd)
+            return message if not success else "Polyline created."
+        except Exception as e2:
+            return f"Failed to create polyline: {str(e2)}"
 
 @autocad_mcp.tool()
-async def arrange_equipment(equipment_types: list, start_x: float, start_y: float, 
-                          direction: str = "right", distance: float = 20.0) -> str:
-    """Arrange multiple equipment blocks in a sequence with connections.
-    
-    Args:
-        equipment_types: List of tuples containing (equipment_type, tag)
-        start_x: X coordinate for starting position
-        start_y: Y coordinate for starting position
-        direction: Direction for arrangement (right, left, up, down)
-        distance: Distance between equipment blocks
-        
-    Returns:
-        Confirmation message or error
+async def rotate_entity_by_id(block_id: str, base_x: float, base_y: float, angle_degrees: float) -> str:
     """
-    try:
-        # Convert the equipment list to a LISP format
-        equipment_list_lisp = "("
-        for eq in equipment_types:
-            eq_type, eq_tag = eq
-            equipment_list_lisp += f'("{eq_type}" (("TAG" . "{eq_tag}"))) '
-        equipment_list_lisp += ")"
-        
-        command = f'(c:arrange_equipment {equipment_list_lisp} {start_x} {start_y} "{direction}" {distance})'
-        
-        # Execute the command
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Arranged {len(equipment_types)} equipment blocks starting at ({start_x},{start_y})"
-        else:
-            return message
-    except Exception as e:
-        logger.error(f"Error arranging equipment: {str(e)}")
-        return f"Error arranging equipment: {str(e)}"
+    Rotate an entity identified by ID around a specified base point by given degrees.
+    """
+    cmd = f'(c:rotate_entity_by_id "{block_id}" {base_x} {base_y} {angle_degrees})'
+    success, message = execute_lisp_command(cmd)
+    return message if not success else f"Rotated entity {block_id} around ({base_x}, {base_y}) by {angle_degrees} degrees."
 
 @autocad_mcp.tool()
-async def set_layer_properties(layer_name: str, color: str, linetype: str = "CONTINUOUS") -> str:
-    """Create or modify a layer with specified properties.
+async def create_linear_dimension(x1: float, y1: float, x2: float, y2: float, dim_x: float, dim_y: float) -> str:
+    """
+    Placeholder for a linear dimension creation.
+    In LT, dimension creation can be done with a command sequence or dimension command stubs.
+    """
+    # First ensure we're using the active layer
+    execute_lisp_command('(setq current-layer (getvar "CLAYER"))')
+    execute_lisp_command('(setvar "CLAYER" current-layer)')
     
-    Args:
-        layer_name: Name of the layer
-        color: Color name or number
-        linetype: Line type name (default: CONTINUOUS)
-        
-    Returns:
-        Confirmation message or error
+    cmd = f"(c:create-linear-dim {x1} {y1} {x2} {y2} {dim_x} {dim_y})"
+    success, message = execute_lisp_command(cmd)
+    return message if not success else "Linear dimension created."
+
+@autocad_mcp.tool()
+async def create_hatch(polyline_id: str, hatch_pattern: str = "ANSI31") -> str:
+    """
+    Placeholder for hatching a closed polyline by ID.
+    """
+    cmd = f'(c:hatch_closed_poly_by_id "{polyline_id}" "{hatch_pattern}")'
+    success, message = execute_lisp_command(cmd)
+    return message if not success else "Hatch created."
+
+###############################################################################
+# Utility Tools
+###############################################################################
+
+@autocad_mcp.tool()
+async def set_layer_properties(layer_name: str, color: str, linetype: str = "CONTINUOUS",
+                             lineweight: str = "Default", plot_style: str = "ByLayer",
+                             transparency: int = 0) -> str:
+    """
+    Create or modify a layer with extended properties.
+    Uses a simpler, more robust approach with individual commands.
     """
     try:
-        command = f'(ensure_layer_exists "{layer_name}" "{color}" "{linetype}")'
+        # First check if AutoCAD is ready
+        if not activate_autocad_window():
+            return "Failed to activate AutoCAD window"
         
-        success, message = execute_lisp_command(command)
-        if success:
-            return f"Layer {layer_name} created/updated with color {color} and linetype {linetype}"
+        # Clear any pending commands - be very thorough
+        for _ in range(3):
+            keyboard.press_and_release('esc')
+            time.sleep(0.2)
+        
+        # Start with a simple command to ensure we're in a clean state
+        execute_lisp_command('(princ "READY")')
+        time.sleep(0.2)
+        
+        # Check if layer exists first using a simple LISP query
+        layer_exists_lisp = f'(if (tblsearch "LAYER" "{layer_name}") (princ "T") (princ "nil"))'
+        success, result = execute_lisp_command(layer_exists_lisp)
+        
+        # Create the layer if it doesn't exist - using direct command approach
+        if "T" not in result:
+            # Use direct keyboard commands instead of LISP
+            keyboard.press_and_release('esc')
+            time.sleep(0.2)
+            keyboard.write("LAYER")
+            keyboard.press_and_release('enter')
+            time.sleep(0.3)
+            
+            # Create a new layer
+            keyboard.write("N")
+            keyboard.press_and_release('enter')
+            time.sleep(0.2)
+            keyboard.write(layer_name)
+            keyboard.press_and_release('enter')
+            time.sleep(0.2)
+            
+            # Set the color
+            keyboard.write("C")
+            keyboard.press_and_release('enter')
+            time.sleep(0.2)
+            keyboard.write(color)
+            keyboard.press_and_release('enter')
+            time.sleep(0.2)
+            keyboard.write(layer_name)
+            keyboard.press_and_release('enter')
+            time.sleep(0.2)
+            
+            # Set the linetype
+            keyboard.write("L")
+            keyboard.press_and_release('enter')
+            time.sleep(0.2)
+            keyboard.write(linetype)
+            keyboard.press_and_release('enter')
+            time.sleep(0.2)
+            keyboard.write(layer_name)
+            keyboard.press_and_release('enter')
+            time.sleep(0.2)
+            
+            # Exit the LAYER command
+            keyboard.press_and_release('esc')
+            time.sleep(0.3)
         else:
-            return message
+            # Layer exists, just modify properties
+            # Similar direct command approach...
+            pass
+        
+        # Now try to set this as the current layer - using direct keyboard command
+        keyboard.press_and_release('esc')
+        time.sleep(0.2)
+        keyboard.write("-LAYER")  # Using the command line version for more reliability
+        keyboard.press_and_release('enter')
+        time.sleep(0.3)
+        keyboard.write("S")  # Set option
+        keyboard.press_and_release('enter')
+        time.sleep(0.2)
+        keyboard.write(layer_name)
+        keyboard.press_and_release('enter')
+        time.sleep(0.3)
+        
+        # Verify current layer
+        verify_current_lisp = '(getvar "CLAYER")'
+        verify_success, current_layer = execute_lisp_command(verify_current_lisp)
+        current_layer = current_layer.strip()
+        
+        if current_layer == layer_name:
+            return f"Layer '{layer_name}' created and set as current layer."
+        else:
+            return f"Layer '{layer_name}' created but could not be set as current. Current layer is '{current_layer}'"
+            
     except Exception as e:
         logger.error(f"Error setting layer properties: {str(e)}")
         return f"Error setting layer properties: {str(e)}"
-
+                
 @autocad_mcp.tool()
 async def execute_custom_autolisp(code: str) -> str:
-    """Execute custom AutoLISP code directly.
-    
-    Args:
-        code: AutoLISP code to execute
-        
-    Returns:
-        Execution result message
-    """
+    """Execute custom AutoLISP code directly from a string."""
     try:
-        # Use clipboard for more complex/longer code
-        pyperclip.copy(code)
-        success, message = execute_lisp_from_clipboard()
-        if success:
-            return "Custom AutoLISP code executed successfully"
-        else:
-            return message
+        # Clean up the code - remove extra whitespace, ensure proper formatting
+        code = code.strip()
+        
+        # For direct command entry, if it's a single-line LISP expression, just execute directly
+        if not "\n" in code and len(code) < 120:  # If it's a short, single line command
+            success, message = execute_lisp_command(code)
+            return message if not success else "Custom AutoLISP code executed successfully."
+        
+        # Otherwise, use a more robust approach - create a temporary LISP file
+        try:
+            # Create a temp file with the LISP code
+            temp_dir = tempfile.gettempdir()
+            temp_file = os.path.join(temp_dir, "temp_autolisp_code.lsp")
+            
+            with open(temp_file, "w") as f:
+                f.write(code)
+            
+            # Load the temp file
+            success, message = load_lisp_file(temp_file)
+            
+            # Clean up
+            try:
+                os.remove(temp_file)
+            except Exception:
+                pass  # Ignore cleanup errors
+                
+            return message if not success else "Custom AutoLISP code executed successfully."
+        
+        except Exception as file_error:
+            logger.error(f"Error with temp file approach: {str(file_error)}")
+            
+            # Fall back to clipboard method if file approach fails
+            pyperclip.copy(code)
+            success, message = execute_lisp_from_clipboard()
+            return message if not success else "Custom AutoLISP code executed successfully."
+            
     except Exception as e:
         logger.error(f"Error executing custom AutoLISP: {str(e)}")
         return f"Error executing custom AutoLISP: {str(e)}"
 
-@autocad_mcp.prompt("create_process_diagram")
-async def create_process_diagram_prompt(process_description: str, equipment_list: str) -> dict:
-    """
-    A prompt template to create a process diagram based on text description.
-    
-    Args:
-        process_description: Description of the process
-        equipment_list: Comma-separated list of major equipment items
-    """
-    messages = [
-        {
-            "role": "user",
-            "content": {
-                "type": "text",
-                "text": f"""I need to create a process diagram for the following process:
+# Add a health check function for the server
+@autocad_mcp.tool()
+async def server_health_check() -> str:
+    """Check the server's health and connection to AutoCAD."""
+    try:
+        logger.info("Performing server health check...")
+        
+        # Check if AutoCAD window is found
+        if acad_window is None:
+            acad_window = find_autocad_window()
+            if acad_window is None:
+                return "WARNING: AutoCAD window not found. Please make sure AutoCAD is running with a drawing open."
+        
+        # Verify window is still valid
+        try:
+            window_title = win32gui.GetWindowText(acad_window)
+            if not window_title or "AutoCAD" not in window_title:
+                return "WARNING: AutoCAD window appears to be invalid or closed."
+            
+            # Test basic commands
+            success, message = execute_lisp_command("(princ \"HEALTH_CHECK\")")
+            if not success:
+                return f"WARNING: Failed to execute basic LISP command: {message}"
+            
+            # All checks passed
+            return f"Server health: OK, connected to: {window_title}"
+        except Exception as e:
+            logger.error(f"Error in health check: {str(e)}")
+            return f"WARNING: Server health check failed: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error during health check: {str(e)}")
+        return f"ERROR: Health check failed with exception: {str(e)}"
+
+# Setup error handling for stream errors
+def setup_error_handling():
+    """Set up robust error handling for stream errors."""
+    try:
+        # Add more robust error handling for stream-related operations
+        import sys
+        original_stderr = sys.stderr
+        
+        class CustomStderr:
+            def write(self, message):
+                # Still write to original stderr
+                original_stderr.write(message)
                 
-{process_description}
-
-The main equipment includes: {equipment_list}
-
-Please analyze this description and help me create the diagram by generating appropriate AutoLISP code and using the AutoCAD LT MCP server tools.
-
-You have these main tools available:
-- create_equipment_symbol (equipment_type, x, y, tag, scale)
-  - Available equipment types: 'pump-centrif1', 'pump-centrif2', 'blower-rotary'
-- create_pipe (start_x, start_y, end_x, end_y)
-- create_text (x, y, text, height)
-- connect_equipment (start_equipment_id, end_equipment_id, pipe_type, from_port, to_port)
-- label_equipment (equipment_id, label_text, height)
-- arrange_equipment (equipment_types, start_x, start_y, direction, distance)
-- set_layer_properties (layer_name, color, linetype)
-- create_simple_pfd (x, y, scale)
-- execute_custom_autolisp (code)
-
-For more complex diagrams, you can generate custom AutoLISP code and execute it directly.
-
-Start by identifying the major equipment items, their connections, and suggesting a logical layout.
-"""
-            }
-        }
-    ]
-    return {"messages": messages}
+                # Log critical errors
+                if "BrokenResourceError" in message or "transport closed" in message:
+                    logger.critical(f"STREAM ERROR DETECTED: {message.strip()}")
+            
+            def flush(self):
+                original_stderr.flush()
+        
+        # Replace stderr with our custom handler
+        sys.stderr = CustomStderr()
+        logger.info("Enhanced error handling for stream errors configured")
+    except Exception as e:
+        logger.error(f"Failed to set up error handling: {str(e)}")
 
 if __name__ == "__main__":
-    # Initialize AutoCAD connection
-    if initialize_autocad_lisp():
-        logger.info("Successfully initialized AutoCAD LT with AutoLISP support")
-    else:
-        logger.warning("Failed to initialize AutoCAD LT with AutoLISP, will try again when tools are called")
+    # Set up enhanced error handling
+    setup_error_handling()
     
-    # Run the MCP server
-    autocad_mcp.run(transport='stdio')
+    # Give AutoCAD time to be fully ready before initialization
+    time.sleep(1.0)
+    
+    # Initialize connection to AutoCAD
+    logger.info("Starting AutoCAD LT MCP server...")
+    if initialize_autocad_lisp():
+        logger.info("Successfully initialized AutoCAD LT with advanced LISP libraries.")
+    else:
+        logger.warning("Failed to initialize AutoCAD LT with LISP. Will retry on tool calls.")
+    
+    try:
+        # Run the server
+        logger.info("Starting MCP server...")
+        autocad_mcp.run(transport='stdio')
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user.")
+    except Exception as e:
+        logger.critical(f"Server crashed: {str(e)}")

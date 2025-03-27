@@ -1,0 +1,4 @@
+mcp[cli]>=1.2.0
+pywin32>=305
+keyboard>=0.13.5
+pyperclip>=1.8.2
