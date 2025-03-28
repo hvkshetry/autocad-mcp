@@ -1,33 +1,76 @@
 ;; drafting_helpers.lsp
-;; Provides general-purpose drafting operations: block insertion, layer management,
-;; connection, labeling, arrangement. Uses references to "error_handling.lsp"
-;; for parameter checks and error display (where relevant).
+;; General drafting operations: block insertion, connection, labeling, arrangement.
+;; Also includes a robust layer creation/setting function per the new approach.
 
-;; Use absolute path for error_handling.lsp
-(load "C:/Users/hvksh/mcp-servers/autocad-mcp/lisp-code/error_handling.lsp") ;; Ensure error handling is accessible
+;; (load "error_handling.lsp")
 
-(defun ensure_layer_exists (layer_name color linetype lineweight plot_style transparency 
-                               / )
-  ;; Enhanced version that handles all layer properties
+(defun ensure_layer_exists (layer_name color linetype / )
+  ;; Minimal approach for create/update. We'll rely on a separate function
+  ;; if we want to incorporate lineweight, plot style, etc.
   (if (not (tblsearch "LAYER" layer_name))
-    (command "_.LAYER" "N" layer_name "")
-  )
-  (command "_.LAYER" "C" color layer_name "")
-  (command "_.LAYER" "L" linetype layer_name "")
-  ;; Handle additional properties if supported in this version
-  (if (/= lineweight "Default")
-    (command "_.LAYER" "LW" lineweight layer_name "")
+    (command "_LAYER"
+             "N" layer_name
+             "C" color layer_name
+             "L" linetype layer_name
+             "" "") ;; ensure we fully exit LAYER
   )
   (princ (strcat "\nEnsured layer exists: " layer_name))
 )
 
+;; A new robust function to create or update a layer
+;; and set it current with setvar "CLAYER"
+(defun c:create_or_set_layer (layer_name color linetype lineweight plot_style transparency / )
+  ;; We do a "no frills" approach for color, linetype, etc.:
+  (command "_LAYER"
+           "N" layer_name
+           "C" color layer_name
+           "L" linetype layer_name
+           "" "")
+  ;; Potentially set lineweight:
+  ;; AutoCAD LT may have limitations. We'll try anyway:
+  ;; (command "_LAYER"
+  ;;         "Lineweight" lineweight layer_name
+  ;;         "" "")
+  ;; Possibly set plot style:
+  ;; (command "_LAYER" "Plot" plot_style layer_name "" "")
+  ;; We skip advanced for now or do a check if it’s supported in LT
+
+  ;; Now set current layer:
+  (setvar "CLAYER" layer_name)
+
+  ;; Optionally handle transparency if desired. 
+  ;; In LT, might not be fully supported. 
+  (princ (strcat "\nLayer " layer_name " created/updated, set current."))
+)
+
 (defun set_current_layer (layer_name / )
-  ;; More reliable layer setting using setvar instead of command
+  ;; Direct approach is safer than messing with _LAYER "S"...
   (setvar "CLAYER" layer_name)
   (princ (strcat "\nSet current layer to: " layer_name))
 )
 
-;; Attribute setters/getters
+;; --------------------------------------------------------------------------
+;; Insert block with optional ID attribute
+(defun c:insert_block (block_name x y id_value scale rotation / insertion_pt ent_name)
+  (if (not (tblsearch "BLOCK" block_name))
+    (progn
+      (princ (strcat "\nBlock definition '" block_name "' not found."))
+      (exit)
+    )
+  )
+  (setq insertion_pt (list x y 0.0))
+  (command "_.INSERT" block_name insertion_pt scale scale rotation)
+  (setq ent_name (entlast))
+  (if (/= id_value "")
+    (set_attribute_value ent_name "ID" id_value)
+  )
+  (princ (strcat "\nInserted block '" block_name "' at (" (rtos x 2 2) "," (rtos y 2 2)
+                 ") with ID='" id_value "'"))
+  ent_name
+)
+
+;; --------------------------------------------------------------------------
+;; Connection point retrieval
 (defun get_attribute_value (block_ent tag / ent_data attrib_ent attrib_data result)
   (setq ent_data (entget block_ent))
   (setq attrib_ent (entnext block_ent))
@@ -60,50 +103,31 @@
   )
 )
 
-;; Insert a block with optional ID attribute
-(defun c:insert_block (block_name x y id_value scale rotation / insertion_pt ent_name)
-  (if (not (tblsearch "BLOCK" block_name))
-    (progn
-      (princ (strcat "\nBlock definition '" block_name "' not found."))
-      (exit)
-    )
-  )
-  (setq insertion_pt (list x y 0.0))
-  (command "_.INSERT" block_name insertion_pt scale scale rotation)
-  (setq ent_name (entlast))
-  (if (/= id_value "")
-    (set_attribute_value ent_name "ID" id_value)
-  )
-  (princ (strcat "\nInserted block '" block_name "' at (" (rtos x 2 2) "," (rtos y 2 2)
-                 ") with ID='" id_value "'"))
-  ent_name
-)
-
-;; Connection point retrieval: a more open approach
-;; If a block has an attribute for the named connection point, we read offsets.
-;; Otherwise, we fall back to a default offset of 0,0
-(defun get_connection_offset (block_ent point_name / ent_data attrib_val offset_x offset_y)
+(defun get_connection_offset (block_ent point_name / attrib_val offset_x offset_y splitted)
   (setq attrib_val (get_attribute_value block_ent point_name))
   (if attrib_val
     (progn
-      ;; Expect a string "dx,dy"
-      (setq offset_x 0.0)
-      (setq offset_y 0.0)
-      (setq splitted (vl-string->list attrib_val ","))
-      ;; fallback if not parseable
-      (if (= (length splitted) 2)
+      (setq offset_x 0.0
+            offset_y 0.0)
+      (setq splitted (vl-string-search "," attrib_val))
+      (if splitted
         (progn
-          (setq offset_x (atof (car splitted)))
-          (setq offset_y (atof (cadr splitted)))
+          ;; splitted is the index of comma in the string. We'll parse
+          ;; or we can do a more robust parse if needed.
+          (setq cpos splitted)
+          (setq dx (substr attrib_val 1 cpos))
+          (setq dy (substr attrib_val (+ cpos 2)))
+          (setq offset_x (atof dx))
+          (setq offset_y (atof dy))
         )
       )
       (list offset_x offset_y)
     )
-    (list 0.0 0.0) ;; default if no attribute
+    (list 0.0 0.0)
   )
 )
 
-(defun get_connection_point (block_ent point_name / block_data insertion_pt scale_x scale_y rotation offset xy)
+(defun get_connection_point (block_ent point_name / block_data insertion_pt scale_x scale_y rotation offset offset_x offset_y)
   (setq block_data (entget block_ent))
   (setq insertion_pt (cdr (assoc 10 block_data)))
   (setq rotation (cdr (assoc 50 block_data)))
@@ -114,7 +138,7 @@
   (if (not scale_x) (setq scale_x 1.0))
   (if (not scale_y) (setq scale_y 1.0))
 
-  (setq offset (get_connection_offset block_ent point_name)) ;; returns (dx dy)
+  (setq offset (get_connection_offset block_ent point_name)) 
   (setq offset_x (* (car offset) scale_x))
   (setq offset_y (* (cadr offset) scale_y))
 
@@ -154,7 +178,6 @@
   (entlast)
 )
 
-;; Arrange blocks in a linear sequence
 (defun c:arrange_blocks (block_list start_x start_y direction distance / current_x current_y)
   (setq current_x start_x)
   (setq current_y start_y)
@@ -165,15 +188,12 @@
     (setq block_name (car blk))
     (setq attributes (cadr blk))
 
-    ;; Insert the block at current_x, current_y
     (setq ent_name (c:insert_block block_name current_x current_y "" 1.0 0.0))
 
-    ;; If attribute pairs exist, set them
     (foreach pair attributes
       (set_attribute_value ent_name (car pair) (cdr pair))
     )
 
-    ;; Move position
     (cond
       ((= (strcase direction) "RIGHT") (setq current_x (+ current_x distance)))
       ((= (strcase direction) "LEFT")  (setq current_x (- current_x distance)))

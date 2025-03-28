@@ -1,10 +1,9 @@
 ;; block_id_helpers.lsp
 ;; Provides functions for referencing/manipulating blocks by an "ID" attribute.
 
-;; Use absolute path for drafting_helpers.lsp
-(load "C:/Users/hvksh/mcp-servers/autocad-mcp/lisp-code/drafting_helpers.lsp")
+;; (load "drafting_helpers.lsp")
 
-(defun find_block_by_id (id_value / ss i block_ent block_data attrib_ent attrib_data found_ent)
+(defun find_block_by_id (id_value / ss i block_ent attrib_ent attrib_data found_ent)
   (setq ss (ssget "X" '((0 . "INSERT"))))
   (if (not ss)
     (progn
@@ -63,7 +62,7 @@
   (setq block_ent (find_block_by_id id_value))
   (if block_ent
     (progn
-      (set_equipment_layer block_ent layer_name)
+      (setvar "CLAYER" layer_name)
       (princ (strcat "\nSet layer for block with ID: " id_value " to " layer_name)))
     (princ (strcat "\nNo block found with ID: " id_value))
   )
@@ -71,3 +70,4 @@
 
 (princ "\nBlock ID helpers loaded successfully.\n")
 (princ)
+
