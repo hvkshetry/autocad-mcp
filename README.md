@@ -135,8 +135,6 @@ See the [TROUBLESHOOTING.md](TROUBLESHOOTING.md) file for common issues and solu
 - Function cancelled errors
 - Communication problems between the server and AutoCAD
 
-The `restart_fixed_server.bat` script can help resolve some common loading issues, and the `test_connection.bat` script can verify proper functionality.
-
 ## License
 
 MIT
