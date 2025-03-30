@@ -66,12 +66,12 @@ def load_lisp_file(file_path):
     
     try:
         win32gui.SetForegroundWindow(acad_window)
-        time.sleep(0.2)
+        time.sleep(0.5)
         
         keyboard.press_and_release('esc')
-        time.sleep(0.1)
+        time.sleep(0.5)
         keyboard.write("(load \"{}\")".format(file_path.replace('\\', '/')))
-        time.sleep(0.1)
+        time.sleep(0.5)
         keyboard.press_and_release('enter')
         time.sleep(0.5)
         
