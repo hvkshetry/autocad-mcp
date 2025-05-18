@@ -51,7 +51,7 @@ This MCP server enables natural language control of AutoCAD LT 2024/2025 through
 3. **Start AutoCAD LT**:
    - Launch AutoCAD LT
    - Create or open a drawing
-   - Make sure the window title contains "AutoCAD LT" and "Drawing"
+   - Ensure the AutoCAD window title includes "AutoCAD" and the drawing name (".dwg")
 
 4. **Start the Server**:
    - Run `start_lisp_server.bat` as Administrator
@@ -125,6 +125,11 @@ The server loads multiple LISP files for functionality:
 - Limited to 2D drawing operations
 - Connection points for blocks use predefined connection point names (CONN_DEFAULT1, CONN_DEFAULT2)
 - Layer colors must be specified as strings (e.g., "red", "yellow", "120")
+
+## Recent Fixes
+
+- Improved AutoCAD window detection so the server works even if the title only shows the drawing file name.
+- Corrected the `insert_block` command construction which previously missed a space between scale and rotation values.
 
 ## Troubleshooting
 
