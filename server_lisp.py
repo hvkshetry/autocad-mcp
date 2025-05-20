@@ -44,7 +44,8 @@ def find_autocad_window():
     def enum_windows_callback(hwnd, result):
         if win32gui.IsWindowVisible(hwnd):
             window_text = win32gui.GetWindowText(hwnd)
-            if "AutoCAD LT" in window_text and "Drawing" in window_text:
+            win_text = window_text.lower()
+            if "autocad" in win_text and ("drawing" in win_text or ".dwg" in win_text):
                 result.append(hwnd)
         return True
     
