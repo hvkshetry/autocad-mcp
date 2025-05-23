@@ -71,6 +71,12 @@ This MCP server enables natural language control of AutoCAD LT 2024/2025 through
 - `label_block`: Add a text label to a block
 - `arrange_blocks`: Arrange multiple blocks in a sequence with custom spacing
 - `create_polyline`: Create a polyline from a series of points
+- `create_rectangle`: Create a rectangle using two opposite corners
+- `create_arc`: Create an arc from center, radius and start/end angles
+- `create_ellipse`: Create an ellipse with major axis and ratio
+- `create_mtext`: Add multiline text with width and optional formatting
+- `create_wipeout_from_points`: Create a wipeout mask from a list of points
+- `move_last_entity`: Move the most recently created entity by a delta
 - `rotate_entity_by_id`: Rotate an entity around a base point
 - `create_linear_dimension`: Add a linear dimension between two points
 - `create_hatch`: Add hatching to a closed polyline area
@@ -87,8 +93,10 @@ The server loads multiple LISP files for functionality:
 4. **block_id_helpers.lsp**: Functions for finding and manipulating blocks by ID attribute
 5. **selection_and_file.lsp**: Selection set management and file operations
 6. **advanced_geometry.lsp**: Extended geometry creation and manipulation
-7. **annotation_helpers.lsp**: Text and dimension creation tools
-8. **layout_management.lsp**: Functions for managing layouts and viewports
+7. **advanced_entities.lsp**: Rectangle, arc, ellipse, mtext, and wipeout helpers
+8. **entity_modification.lsp**: Basic entity modification commands
+9. **annotation_helpers.lsp**: Text and dimension creation tools
+10. **layout_management.lsp**: Functions for managing layouts and viewports
 
 ## Usage Examples
 

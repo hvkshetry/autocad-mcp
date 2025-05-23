@@ -160,6 +160,8 @@ def initialize_autocad_lisp():
         "block_id_helpers.lsp",
         "selection_and_file.lsp",
         "advanced_geometry.lsp",
+        "advanced_entities.lsp",
+        "entity_modification.lsp",
         "annotation_helpers.lsp",
         "layout_management.lsp"
     ]
@@ -290,6 +292,65 @@ async def create_polyline(points: List[Tuple[float, float]], closed: bool = Fals
     cmd = f"(c:create-polyline (list {pts_str}) {'T' if closed else 'nil'})"
     success, message = execute_lisp_command(cmd)
     return message if not success else "Polyline created."
+
+@autocad_mcp.tool()
+async def create_rectangle(x1: float, y1: float, x2: float, y2: float,
+                           layer: Optional[str] = None) -> str:
+    layer_part = f' "{layer}"' if layer else " nil"
+    cmd = f"(c:create-rectangle {x1} {y1} {x2} {y2}{layer_part})"
+    success, message = execute_lisp_command(cmd)
+    return message if not success else "Rectangle created."
+
+@autocad_mcp.tool()
+async def create_arc(center_x: float, center_y: float, radius: float,
+                     start_angle: float, end_angle: float,
+                     layer: Optional[str] = None) -> str:
+    layer_part = f' "{layer}"' if layer else " nil"
+    cmd = (f"(c:create-arc {center_x} {center_y} {radius} {start_angle}"
+           f" {end_angle}{layer_part})")
+    success, message = execute_lisp_command(cmd)
+    return message if not success else "Arc created."
+
+@autocad_mcp.tool()
+async def create_ellipse(center_x: float, center_y: float,
+                         major_axis_end_x: float, major_axis_end_y: float,
+                         minor_axis_ratio: float,
+                         layer: Optional[str] = None) -> str:
+    layer_part = f' "{layer}"' if layer else " nil"
+    cmd = (f"(c:create-ellipse {center_x} {center_y} {major_axis_end_x}"
+           f" {major_axis_end_y} {minor_axis_ratio}{layer_part})")
+    success, message = execute_lisp_command(cmd)
+    return message if not success else "Ellipse created."
+
+@autocad_mcp.tool()
+async def create_mtext(x: float, y: float, width: float, text_string: str,
+                       height: float, layer: Optional[str] = None,
+                       style: Optional[str] = None,
+                       rotation: Optional[float] = 0.0) -> str:
+    text_escaped = text_string.replace('"', '\\"')
+    style_part = f' "{style}"' if style else " nil"
+    layer_part = f' "{layer}"' if layer else " nil"
+    cmd = (f'(c:create-mtext {x} {y} {width} "{text_escaped}" {height}'
+           f'{layer_part}{style_part} {rotation})')
+    success, message = execute_lisp_command(cmd)
+    return message if not success else "MText created."
+
+@autocad_mcp.tool()
+async def create_wipeout_from_points(points: List[Tuple[float, float]],
+                                     frame_visible: bool = False) -> str:
+    pts_str = ""
+    for (x, y) in points:
+        pts_str += f" (list {x} {y} 0.0)"
+    frame_flag = 'T' if frame_visible else 'nil'
+    cmd = f"(c:create-wipeout-from-points (list {pts_str}) {frame_flag})"
+    success, message = execute_lisp_command(cmd)
+    return message if not success else "Wipeout created."
+
+@autocad_mcp.tool()
+async def move_last_entity(delta_x: float, delta_y: float) -> str:
+    cmd = f"(c:move-last-entity {delta_x} {delta_y})"
+    success, message = execute_lisp_command(cmd)
+    return message if not success else "Entity moved."
 
 @autocad_mcp.tool()
 async def rotate_entity_by_id(block_id: str, base_x: float, base_y: float, angle_degrees: float) -> str:
