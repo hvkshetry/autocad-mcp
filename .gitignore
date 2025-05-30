@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# AutoCAD temporary files
+*.bak
+*.sv$
+*.dwl
+*.dwl2
+
+# Log files
+*.log
+
+# User-specific configuration
+claude_desktop_config.json
+
+# Local test files
+test_*.dwg
+temp_*.lsp
+
+# CTO Library (not included in repo)
+PIDv4-CTO/
+
+# User documentation (if any)
+docs/user/

@@ -22,5 +22,13 @@
   (princ (strcat "\nText created at (" (rtos x 2 2) "," (rtos y 2 2) "): " text))
 )
 
+;; New function that supports rotation
+(defun c:create-text-rotated (x y text height rotation / insertion_pt)
+  (setq insertion_pt (list x y 0.0))
+  (command "_text" "j" "m" insertion_pt height rotation text)
+  (princ (strcat "\nText created at (" (rtos x 2 2) "," (rtos y 2 2) 
+                 ") with rotation " (rtos rotation 2 2) ": " text))
+)
+
 (princ "\nBasic shapes AutoLISP library loaded successfully.\n")
 (princ)

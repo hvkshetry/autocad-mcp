@@ -39,6 +39,10 @@ autocad_mcp = FastMCP("autocad-lisp-server")
 acad_window = None
 lisp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lisp-code")
 
+# Configuration flag to disable ESC key presses if they cause issues
+# Set to False if AutoCAD help menu keeps opening
+USE_ESC_KEY = True
+
 def find_autocad_window():
     """Find the AutoCAD LT window handle by checking window titles."""
     def enum_windows_callback(hwnd, result):
@@ -69,12 +73,16 @@ def load_lisp_file(file_path):
         win32gui.SetForegroundWindow(acad_window)
         time.sleep(0.5)
         
+        # Single ESC with proper delay
         keyboard.press_and_release('esc')
         time.sleep(0.5)
         keyboard.write("(load \"{}\")".format(file_path.replace('\\', '/')))
         time.sleep(0.5)
         keyboard.press_and_release('enter')
-        time.sleep(0.5)
+        
+        # Extended delay for security prompt acceptance
+        # Adjust this value if you need more time to accept the prompt
+        time.sleep(3.0)  # Increased from 0.5 to 3.0 seconds
         
         return True, f"LISP file '{os.path.basename(file_path)}' loaded successfully"
     except Exception as e:
@@ -94,10 +102,10 @@ def execute_lisp_command(command):
         win32gui.SetForegroundWindow(acad_window)
         time.sleep(0.2)
         
-        keyboard.press_and_release('esc')
-        time.sleep(0.1)
-        keyboard.press_and_release('esc')
-        time.sleep(0.1)
+        if USE_ESC_KEY:
+            # Single ESC with longer delay to avoid accidental key combinations
+            keyboard.press_and_release('esc')
+            time.sleep(0.3)  # Increased delay to ensure clean key release
         
         keyboard.write(command)
         time.sleep(0.1)
@@ -121,10 +129,10 @@ def execute_lisp_from_clipboard():
         win32gui.SetForegroundWindow(acad_window)
         time.sleep(0.2)
         
-        keyboard.press_and_release('esc')
-        time.sleep(0.1)
-        keyboard.press_and_release('esc')
-        time.sleep(0.1)
+        if USE_ESC_KEY:
+            # Single ESC with longer delay to avoid accidental key combinations
+            keyboard.press_and_release('esc')
+            time.sleep(0.3)  # Increased delay to ensure clean key release
         
         keyboard.write("(eval (read))")
         time.sleep(0.1)
