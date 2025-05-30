@@ -473,32 +473,33 @@ async def update_block_attribute(x: float, y: float, tag_name: str, new_value: s
 
 @autocad_mcp.tool()
 async def insert_pid_equipment_with_attribs(category: str, symbol_name: str,
-                                           x: float, y: float, equipment_no: str,
+                                           x: float, y: float, scale: float = 1.0,
+                                           rotation: float = 0.0, equipment_no: str = "",
                                            equipment_type: str = "", manufacturer: str = "",
                                            model_no: str = "", line_no: str = "",
-                                           capacity: str = "", scale: float = 1.0,
-                                           rotation: float = 0.0) -> str:
+                                           capacity: str = "") -> str:
     """Insert P&ID equipment with proper CTO block attributes.
     
     Args:
         category: CTO category (e.g., "EQUIPMENT", "TANKS", "PUMPS-BLOWERS")
         symbol_name: Symbol name (e.g., "TANK-VERTICAL_OPEN", "PUMP-CENTRIF1")
         x, y: Insertion point
+        scale: Scale factor (default 1.0)
+        rotation: Rotation in degrees (default 0.0)
         equipment_no: Equipment number/tag (e.g., "P-101", "TK-201")
         equipment_type: Type of equipment (e.g., "Centrifugal Pump", "Storage Tank")
         manufacturer: Equipment manufacturer
         model_no: Model number
         line_no: Associated line number
         capacity: Equipment capacity (tanks only)
-        scale: Scale factor
-        rotation: Rotation in degrees
     """
-    # Escape quotes in string parameters
-    equipment_type = equipment_type.replace('"', '\\"') if equipment_type else '""'
-    manufacturer = manufacturer.replace('"', '\\"') if manufacturer else '""'
-    model_no = model_no.replace('"', '\\"') if model_no else '""'
-    line_no = line_no.replace('"', '\\"') if line_no else '""'
-    capacity = capacity.replace('"', '\\"') if capacity else '""'
+    # Escape quotes in string parameters - handle empty strings properly
+    equipment_no = equipment_no.replace('"', '\\"') if equipment_no else ""
+    equipment_type = equipment_type.replace('"', '\\"') if equipment_type else ""
+    manufacturer = manufacturer.replace('"', '\\"') if manufacturer else ""
+    model_no = model_no.replace('"', '\\"') if model_no else ""
+    line_no = line_no.replace('"', '\\"') if line_no else ""
+    capacity = capacity.replace('"', '\\"') if capacity else ""
     
     cmd = f'(c:insert-pid-equipment "{category}" "{symbol_name}" {x} {y} {scale} {rotation} "{equipment_no}" "{equipment_type}" "{manufacturer}" "{model_no}" "{line_no}" "{capacity}")'
     success, message = execute_lisp_command_fast(cmd)
